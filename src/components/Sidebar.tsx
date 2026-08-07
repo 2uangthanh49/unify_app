@@ -27,6 +27,9 @@ export interface MenuItemLevel2 {
     id: string;
     title: string;
     items?: MenuItemLevel3[];
+    formId?: string;
+    originalPath?: string[];
+    originalLabels?: string[];
 }
 
 export interface MenuItemLevel1 {
@@ -147,6 +150,7 @@ function buildDatabaseMenus(commands: ZcommandMenuRecord[], activeCountryCode: s
                 return {
                     id: level2.menu_id,
                     title: commandTitle(level2),
+                    formId: commandFormId(level2),
                     items: level3Commands.map(level3 => ({
                         id: level3.menu_id,
                         title: commandTitle(level3),
@@ -208,6 +212,65 @@ const D365_MENU_DATA: MenuItemLevel1[] = [
 
 const STATIC_MENU_DATA = D365_MENU_DATA.filter(item => item.id !== "modules");
 
+interface RecentItem {
+    id: string;
+    title: string;
+    path: string[];
+    labels: string[];
+    formId?: string;
+}
+
+function findStaticMenuItem(path: string[]): { title: string; labels: string[]; formId?: string } | null {
+    if (path.length === 0) return null;
+    const l1 = STATIC_MENU_DATA.find(item => item.id === path[0]);
+    if (!l1) return null;
+    if (path.length === 1) return { title: l1.title, labels: [l1.title] };
+
+    const l2 = l1.items?.find(item => item.id === path[1]);
+    if (!l2) return null;
+    if (path.length === 2) return { title: l2.title, labels: [l1.title, l2.title], formId: l2.formId };
+
+    const l3 = l2.items?.find(item => item.id === path[2]);
+    if (!l3) return null;
+    return { title: l3.title, labels: [l1.title, l2.title, l3.title], formId: l3.formId };
+}
+
+function findActivePageDetails(
+    activePath: string[],
+    rawCommands: ZcommandMenuRecord[]
+): { title: string; labels: string[]; formId?: string } | null {
+    if (!activePath || activePath.length === 0) return null;
+
+    // Check static menu first
+    const staticItem = findStaticMenuItem(activePath);
+    if (staticItem) return staticItem;
+
+    // Check database menu
+    const leafId = activePath[activePath.length - 1];
+    const leafCmd = rawCommands.find(cmd => cmd.menu_id === leafId);
+    if (!leafCmd) return null;
+
+    const title = commandTitle(leafCmd);
+    const formId = commandFormId(leafCmd);
+
+    // Build labels
+    const labels: string[] = [];
+    activePath.forEach(pathId => {
+        if (pathId === "modules") {
+            labels.push("Modules");
+        } else {
+            const cmd = rawCommands.find(c => c.menu_id === pathId);
+            if (cmd) {
+                labels.push(commandTitle(cmd));
+            } else {
+                labels.push(pathId);
+            }
+        }
+    });
+
+    return { title, labels, formId };
+}
+
 export const Sidebar: React.FC<SidebarProps> = ({
     onSelectPage,
     activePath,
@@ -223,13 +286,91 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const [loadError, setLoadError] = useState<string | null>(null);
     const { countryCode } = useCountry();
 
+    const [recentItems, setRecentItems] = useState<RecentItem[]>(() => {
+        try {
+            const saved = localStorage.getItem("unify_sidebar_recent");
+            if (saved) {
+                return JSON.parse(saved);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+        return [
+            { id: "rec-ap", title: "Accounts payable", path: ["modules", "ap"], labels: ["Modules", "Accounts payable"] },
+            { id: "rec-ar", title: "Accounts receivable", path: ["modules", "ar"], labels: ["Modules", "Accounts receivable"] }
+        ];
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem("unify_sidebar_recent", JSON.stringify(recentItems));
+        } catch (e) {
+            console.error(e);
+        }
+    }, [recentItems]);
+
+    useEffect(() => {
+        if (!activePath || activePath.length === 0) return;
+
+        const topLevelId = activePath[0];
+        if (topLevelId === "recent" || topLevelId === "home" || topLevelId === "favorites") {
+            return;
+        }
+
+        const found = findActivePageDetails(activePath, rawCommands);
+        if (!found) return;
+
+        const pathKey = activePath.join("/");
+
+        setRecentItems(prev => {
+            if (prev.length > 0) {
+                const firstItem = prev[0];
+                const firstItemKey = firstItem.path ? firstItem.path.join("/") : firstItem.id;
+                if (firstItemKey === pathKey) {
+                    return prev;
+                }
+            }
+
+            const filtered = prev.filter(item => {
+                const itemKey = item.path ? item.path.join("/") : item.id;
+                return itemKey !== pathKey;
+            });
+
+            const newItem: RecentItem = {
+                id: `recent-${Date.now()}`,
+                title: found.title,
+                path: activePath,
+                labels: found.labels,
+                formId: found.formId
+            };
+
+            return [newItem, ...filtered].slice(0, 7);
+        });
+    }, [activePath, rawCommands]);
+
     const menuData = useMemo(() => {
+        const dynamicStaticMenus = STATIC_MENU_DATA.map(item => {
+            if (item.id === "recent") {
+                return {
+                    ...item,
+                    items: recentItems.map(rec => ({
+                        id: rec.id,
+                        title: rec.title,
+                        originalPath: rec.path,
+                        originalLabels: rec.labels,
+                        formId: rec.formId
+                    }))
+                };
+            }
+            return item;
+        });
+
         if (rawCommands.length === 0) {
-            return STATIC_MENU_DATA;
+            return dynamicStaticMenus;
         }
         const dbMenus = buildDatabaseMenus(rawCommands, countryCode);
-        return [...STATIC_MENU_DATA, ...dbMenus];
-    }, [rawCommands, countryCode]);
+        return [...dynamicStaticMenus, ...dbMenus];
+    }, [rawCommands, countryCode, recentItems]);
 
     // Track expanded Level 1 and Level 2 nodes
     const [expandedL1, setExpandedL1] = useState<Record<string, boolean>>({
@@ -302,7 +443,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     const toggleL2 = (l1: MenuItemLevel1, l2: MenuItemLevel2, hasChildren: boolean) => {
         if (!hasChildren) {
-            onSelectPage([l1.id, l2.id], [l1.title, l2.title]);
+            if (l2.originalPath) {
+                onSelectPage(l2.originalPath, l2.originalLabels, l2.formId);
+            } else {
+                onSelectPage([l1.id, l2.id], [l1.title, l2.title], l2.formId);
+            }
             return;
         }
         setExpandedL2(prev => ({ ...prev, [l2.id]: !prev[l2.id] }));
@@ -440,7 +585,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                         {l1.items?.map((l2) => {
                                             const isL2Expanded = !!expandedL2[l2.id];
                                             const hasL2Children = l2.items && l2.items.length > 0;
-                                            const isL2Active = activePath[1] === l2.id;
+                                            const isL2Active = l2.originalPath
+                                                ? activePath.join("/") === l2.originalPath.join("/")
+                                                : activePath[1] === l2.id;
 
                                             return (
                                                 <div key={l2.id} className="space-y-0.5">
