@@ -344,7 +344,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 formId: found.formId
             };
 
-            return [newItem, ...filtered].slice(0, 7);
+            return [newItem, ...filtered].slice(0, 10);
         });
     }, [activePath, rawCommands]);
 
