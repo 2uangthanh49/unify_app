@@ -10,6 +10,8 @@ services:
       enabled: true
     allowedRedirectUris:
       - http://localhost:5173
+      - https://early-tarn-a7bec944dc-eastasia.webapp.fabricapps.net
+      - https://fair-hill-eb53d6bd41-eastasia.webapp.fabricapps.net
   data:
     enabled: true
     dialect: mssql
@@ -18,3 +20,7 @@ services:
     folder: dist
     buildCommand: npm run build:fabric
     indexDocument: index.html
+  storage:
+    enabled: false
+  functions:
+    enabled: false

@@ -25,6 +25,8 @@
     "@microsoft/rayfin-core": "^1.33.2",
     "@microsoft/rayfin-data": "^1.33.2",
     "@tailwindcss/vite": "^4.1.11",
+    "framer-motion": "^13.0.0",
+    "lucide-react": "^1.29.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.1"
@@ -38,6 +40,7 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react-swc": "^4.2.2",
+    "agentation": "^3.0.2",
     "eslint": "^9.28.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",

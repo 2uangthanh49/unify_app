@@ -1,12 +1,12 @@
 import { Todo } from './Todo.js';
-import { zscommand } from './zscommand.js';
-  
+import { Zcommand } from './Zcommand.js';
+
 export type UnifyAppSchema = {
   Todo: Todo;
-  zscommand: zscommand;
+  Zcommand: Zcommand;
 };
 
 export const schema = [
-  Todo, 
-  zscommand
+  Todo,
+  Zcommand
 ];
